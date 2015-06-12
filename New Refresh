@@ -1,0 +1,129 @@
+//（点击加载更多）更新数据公用的函数
+- (void)fetchWebDataWithPage:(NSInteger)page {
+    NSString *urlStr = [NSString stringWithFormat:@"%@/my/user_list.php?page=%ld&number=10", kSNSDomain, (long)page];
+    NSURL *url = [NSURL URLWithString:urlStr];
+    // 这样是可以的：NSURLRequest *request = [[NSURLRequest alloc] initWithURL:url];
+    NSURLRequest *request = [NSURLRequest requestWithURL:url];
+    self.connection = [NSURLConnection connectionWithRequest:request delegate:self];
+    [self.connection start];
+}
+
+
+#pragma mark - 下拉刷新
+- (void)addRefreshControl {
+    // UIRefreshControl: iOS系统自带的下拉刷新类
+    // 它只能用在UITableViewController及其子类中
+    UIRefreshControl *control = [[UIRefreshControl alloc] init];
+    control.tintColor = [UIColor purpleColor];
+    [control addTarget:self action:@selector(refresh:) forControlEvents:UIControlEventValueChanged];
+    
+    control.attributedTitle = [[NSAttributedString alloc] initWithString:@"刷新中" attributes:
+  @{NSForegroundColorAttributeName : [UIColor purpleColor]}];
+    
+    self.refreshControl = control;
+    [control release];
+}
+
+// 刷新数据
+// 清空数据源
+// 重新加载第一页
+- (void)refresh:(UIRefreshControl *)control {
+    self.currentPage = 1;
+    // [self.userArray removeAllObjects];
+    [self fetchWebDataWithPage:self.currentPage];
+}
+//懒加载
+- (NSMutableArray *)userArray {
+    if (_userArray == nil) {
+        _userArray = [[NSMutableArray alloc] init];
+    }
+    return _userArray;
+}
+
+#pragma mark - <NSURLConnectionDataDelegate>
+// 当请求发生错误
+- (void)connection:(NSURLConnection *)connection didFailWithError:(NSError *)error {
+    NSLog(@"Error: %@  reason: %@", [error localizedDescription], error.localizedFailureReason);
+}
+
+// 当收到服务器的响应
+- (void)connection:(NSURLConnection *)connection didReceiveResponse:(NSURLResponse *)response {
+    // 清空 webData
+    [self.webData setLength:0];
+}
+
+- (void)connection:(NSURLConnection *)connection didReceiveData:(NSData *)data {
+    [self.webData appendData:data]; // 把data加入到webData中
+}
+
+// 请求数据完成时，此方法被调用
+// 这个时候webData就是我们想要的完整的数据
+- (void)connectionDidFinishLoading:(NSURLConnection *)connection {
+    self.tableView.tableFooterView.hidden = NO;
+    NSDictionary *dict = [NSJSONSerialization JSONObjectWithData:self.webData options:NSJSONReadingMutableContainers error:nil];
+    
+    // 如果是第一页，清空数组 
+    if (self.currentPage == 1) {
+        [self.userArray removeAllObjects];
+    }
+
+    NSArray *users = [dict objectForKey:@"users"];
+    for (NSDictionary *dict in users) {
+        User *user     = [[User alloc] init];
+        user.uid       = dict[@"uid"];
+        user.username  = dict[@"username"];
+        user.headimage = dict[@"headimage"];
+        [self.userArray addObject:user];
+        [user release];
+    }
+    // [self.userArray addObjectsFromArray:users];
+    
+    // 停止刷新
+    [self.refreshControl endRefreshing];
+    
+    // tableView刷新
+    [self.tableView reloadData];
+}
+
+#pragma mark - Table view data source
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+    return 1;
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    return self.userArray.count;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    static NSString *cellID = @"1503";
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellID];
+    if (cell == nil) {
+        cell = [[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:cellID] autorelease];
+    }
+    User *user  = self.userArray[indexPath.row];
+    cell.textLabel.text       = user.uid;
+    cell.detailTextLabel.text = user.username;
+    // cell.imageView.image =
+    NSURL *imageUrl = [NSURL URLWithString:[NSString stringWithFormat:@"%@/my/headimage.php?uid=%@", kSNSDomain, user.uid]];
+    // cell.imageView.image =
+    [cell.imageView sd_setImageWithURL:imageUrl placeholderImage:[UIImage imageNamed:@"test.png"]];
+    return cell;
+    // [UIImage imageNamed:@"test.png"]
+}
+
+- (NSMutableData *)webData {
+    if (_webData == nil) {
+        _webData = [[NSMutableData alloc] init];
+    }
+    return _webData;
+}
+
+#pragma mark - dealloc
+- (void)dealloc {
+    self.userArray  = nil;
+    self.connection = nil;
+    self.webData    = nil;
+    [super dealloc];
+}
+
